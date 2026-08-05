@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dcngen"
+version = "0.1.0"
+description = "Generator for a labelled thermal-hydraulic District Cooling Network dataset (GNN fault-diagnosis benchmark)"
+readme = "README.md"
+requires-python = ">=3.12"
+# Dependencies are managed by environment.yml (env-authoritative); this file exists
+# only so `pip install -e .` makes the package importable.
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# slow = release-assurance runs measured in tens of minutes (currently the
+# full Hanoi plan rows; ~20 min per 144-step scenario, measured 2026-07-23);
+# excluded from the default suite — run explicitly with `pytest -m slow`
+# before a release/generation green light.
+markers = ["slow: release-assurance tests excluded from the default suite"]
+addopts = "-m 'not slow'"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# Trailing semicolons in notebooks are deliberate matplotlib output suppression.
+"*.ipynb" = ["E702"]

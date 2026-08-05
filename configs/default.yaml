@@ -1,0 +1,204 @@
+# dcngen default configuration — SI units unless noted.
+# Loading is strict: unknown keys, missing keys, and unphysical values are rejected.
+
+water:                      # chilled-water properties, 5-15 degC range
+  cp: 4186.0                # J/(kg K)
+  rho: 999.5                # kg/m3 (mid-range 999.9@5C .. 999.1@15C)
+  mu: 1.3e-3                # Pa s (cold water is more viscous)
+
+thermal:
+  T_supply: 6.0             # degC, plant supply setpoint (typical 5-7)
+  T_return_design: 13.0     # degC (typical 12-15)
+  dT_design: 7.0            # K, must equal T_return_design - T_supply
+  T_ground: 20.0            # degC, ground/ambient driving pipe heat gain
+  init_residence_cap: 21600.0  # s (6 h), pre-history bound of the steady initial
+                            # condition: scenarios start at midnight, so water in
+                            # pipes near-stagnant at t=0 last moved at yesterday's
+                            # evening shoulder — hours old, slightly-warmed design
+                            # water, never the unbounded steady limit's
+                            # ground-temperature water (tau_thermal ~ weeks)
+
+heat_gain:                  # per-pipe linear U':
+                            # U' = 1/[ln(D_c/D_o)/(2 pi l_PUR) + arccosh(2H/D_c)/(2 pi l_soil)]
+                            # with EN 253 series-1 casing geometry; bounds drawn uniformly
+  mode: derived             # derived (released dataset) | scalar (dev/ablation fallback)
+  lambda_pur_min: 0.023     # W/(m K), fresh axial-conti PUR foam (LOGSTOR catalogue)
+  lambda_pur_max: 0.029     # EN 253 lambda50 upper limit
+  lambda_soil_min: 1.0      # W/(m K), EN 13941 soil class dry
+  lambda_soil_max: 1.6      # medium-wet
+  burial_cover_min: 0.6     # m of ground cover above the casing; H = cover + D_c/2
+  burial_cover_max: 1.2     # (keeps large bores below grade automatically)
+  scalar_U: 0.35            # W/(m K), flat fallback value — small/mid-bore networks only
+  scalar_U_min: 0.2         # ablation sampling band
+  scalar_U_max: 0.6
+
+ets:
+  approach: 1.0             # K, heat-exchanger approach: the secondary program is
+                            # the primary shifted by this at both ends (supply and return),
+                            # so dT_building == dT_design and the whole program co-moves
+                            # with the plant setpoint — derived 7/14 degC at the default
+                            # 6/13 primary. Design effectiveness = dT/(dT+approach) = 7/8;
+                            # design UA = Q_design/approach. Balanced counterflow HX;
+                            # utility standards Marafeq/South Energy/SAWS, IEA DHC Annex VI
+                            # approach <= 1 degC.
+  max_flow_factor: 2.0      # valve limit, x design primary flow
+  healthy_ua_factor_min: 1.00  # healthy sizing-margin band on design UA, drawn per
+  healthy_ua_factor_max: 1.10  # consumer: PHE fouling margin 5-10 % excess surface
+                            # (HEI Tech Sheet #141); keeps UA deviation from being a
+                            # perfect fault tell and separates the healthy band from
+                            # the fouling band
+  min_dp: 10.0              # m (~1.0 bar), minimum differential pressure across the
+                            # ETS at the critical consumer at design. Citable band for
+                            # DC: 100-150 kPa per ETS — IEA DHC Annex XII sec. 7.2.1.1
+                            # (citing Frederiksen & Werner 2013).
+
+solver:
+  dt: 600.0                 # s, fine timestep (10 min)
+  flow_tol_rel: 1.0e-3      # fixed-point convergence on consumer flows
+  relaxation: 0.5           # under-relaxation
+  max_iterations: 15        # per-timestep iteration cap; sampled hot-ground/noisy
+                            # draws exceed cap 10 on 1-3% of steps, 15 prices the
+                            # tail, mean iterations unchanged
+  required_pressure: 5.0    # m, PDD full-delivery pressure
+  minimum_pressure: 0.0     # m, PDD zero-delivery pressure
+
+validation:
+  mass_balance_rel_tol: 1.0e-6   # closed-loop mass-balance threshold
+  energy_rel_tol: 0.03           # plant energy-balance residual
+  max_velocity: 2.5              # m/s — reference velocity for exceedance metadata,
+                                 # NOT a gate cap; the gate uses the derived
+                                 # self-consistency envelope
+  max_unconverged_frac: 0.02     # scenario budget of unconverged timesteps
+                                 # (pilot p95 was 1.6% at cap 10)
+  temperature_tol: 1.0e-6        # K, numerical slack on the envelope
+                                 # T_supply <= T <= T_ground (plug arithmetic is exact;
+                                 # this absorbs float roundoff only)
+  pressure_floor_overpressure: 2.0  # m (~0.2 bar) above the loop high point
+                                    # (Reflex planning handbook / CIBSE)
+  plant_suction_min: 10.0        # m (~1 bar) pump-suction minimum against
+                                 # cavitation (Reflex)
+  pressure_ceiling: 147.0        # m, 0.9 x PN16 continuous (Swedenergy F:101 /
+                                 # Alfa Laval PN16 class; EN ISO 4126 0.9 factor)
+  pressure_ceiling_pn25: 229.5   # m, 0.9 x PN25 continuous (25 bar = 255.0 m at
+                                 # rho 999.5; same 0.9 factor); high-head draws
+                                 # escalate to the PN25 class, stamped per scenario
+                                 # via the pn25_escalated gate metric
+  max_clean_unmet_frac: 0.005    # clean-scenario unmet budget (0.5% of consumer-steps)
+                                 # — transient valve pinches at peak under hot-ground
+                                 # draws are real behaviour (pilot max 0.34%), recorded
+                                 # like the convergence budget, never rejected below it
+
+verification:                # pandapipes cross-check tolerances; thermal-strict,
+                             # hydraulic-documented. verify/pandapipes_ref.py
+  temperature_tol: 0.5       # K, node temperature agreement: 0.5 K is the resolution
+                             # below which a DC operator does not act, and ~7 % of
+                             # the 7 K design dT
+  energy_rel_tol: 0.03       # plant energy-balance residual
+  flow_rel_tol: 0.01         # pipe-flow deviation as a fraction of what the plant
+                             # circulates (a distribution metric — see
+                             # compare_steady on why not per-pipe)
+  pressure_tol: 1.0          # m — documented band: EPANET solves Hazen-Williams and
+                             # pandapipes Darcy-Weisbach, so exact agreement is not
+                             # expected. Anchored at 10 % of ets.min_dp (10 m), i.e.
+                             # the two engines must agree closely enough to size the
+                             # same plant and the same ETS control valves.
+  pipe_sections: 10          # pandapipes sub-elements per pipe; its implicit scheme is
+                             # 2nd order in the pipe NTU, which is ~1e-2 on insulated DC
+                             # pipe — sweeping this 1 -> 40 moves the compared
+                             # temperature field by 6e-14 K, so 10 is margin for a
+                             # future higher-NTU network, not a sensitivity of this one
+  steady_turnovers: 1.5      # dcngen marches this many transits of its SLOWEST pipe
+                             # before the fields are compared — derived per network,
+                             # not a fixed step count, because the transit that matters
+                             # spans 40-165 steps across Hanoi draws (measured 0/17/203).
+                             # One turnover flushes every initial-condition plug; the
+                             # half is margin.
+  steady_max_steps: 400      # cap, so a near-stagnant pipe cannot make the harness
+                             # march forever (it would be flagged by steady_drift_tol)
+  steady_drift_tol: 1.0e-2   # K, last-step drift admitted as "settled" = 2 % of
+                             # temperature_tol. NOT smaller: the plug queue's node-mixing
+                             # jitter has a floor around 1e-3 K that does not decay with
+                             # more steps (plugs enter and leave at step boundaries), so
+                             # a tighter bar would be demanding numerical noise. At 2 % of
+                             # the compared tolerance the march cannot meaningfully
+                             # contribute to the reported deviation.
+
+loads:
+  ar1_correlation_time: 3600.0  # s, physical load noise ~1 h autocorrelation
+  noise_sigma: 0.05             # relative std of multiplicative AR(1) noise
+  seasonal_amplitude: 0.0       # flat by default (knob only)
+
+faults:
+  leak_severity_min: 0.01   # leak flow as fraction of network design flow
+  leak_severity_max: 0.10
+  onset_window_start: 0.2   # abrupt onset in the middle 60% of horizon
+  onset_window_end: 0.8
+  leak_discharge_coeff: 0.75  # sharp-edged orifice; WNTR add_leak default (Crowl & Louvar via WNTR docs)
+  fouling_severity_min: 0.30  # UA multiplier m, whole-scenario: severe end
+                            # = worst verified closed-circuit fouling (Taler & Jaglarz
+                            # 4-yr BPHE at U_clean 3000-5000 W/m2K)
+  fouling_severity_max: 0.85  # mild end ~ 1-yr DH service (Genic et al.); m >= 0.90 sits
+                            # inside the PHE design margin — deliberately excluded
+  bypass_fraction_min: 0.05 # primary short-circuit fraction f: floor = 10x FCI 70-2
+                            # Class II healthy seat leakage, ~2x best measured DC overflow
+  bypass_fraction_max: 0.50 # ceiling = Taylor 2002 common worst case (plant dT at half
+                            # of design <=> f = 0.5)
+  bypass_whole_horizon_prob: 0.5  # temporal split: valve failed mid-operation
+                            # (abrupt onset) vs bypass open since commissioning
+                            # (whole-horizon), 50/50 so cause discrimination does not
+                            # collapse into step detection
+
+sampler:                    # scenario-plan generation; every band drawn uniformly
+  network: hanoi_8GB_1Y     # the v1 release network
+  static_draw_count: 1000   # static_scenario_id ~ U{0..999}, DiTEC's validated draws
+  T_supply_min: 5.0         # degC, plant setpoint range; secondary co-moves
+  T_supply_max: 7.0
+  T_ground_min: 15.0        # degC; U(15, 30) covers temperate-to-tropical burial temps
+  T_ground_max: 30.0
+  residential_minority_min: 0.25  # DiTEC's Louvain minority band, direction
+  residential_minority_max: 0.35  # inverted for DC (minority = residential)
+  noise_sigma_min: 0.02     # per-consumer AR(1) sigma band (DiTEC's per-junction band)
+  noise_sigma_max: 0.2
+  knot_jitter: 0.1          # archetype profile knots x U(1-j, 1+j) per
+                            # (scenario, archetype), renormalised at application
+  seasonal_amplitude_min: 0.1  # month tier only; floor ~ tropical near-flat,
+  seasonal_amplitude_max: 0.5  # cap keeps winter >= 50 % of mean load
+  bulk:                     # 24 h detection/localisation workhorse tier
+    horizon: 86400.0        # s
+    normal: 1000
+    leak: 800
+    fouling: 550
+    bypass: 450
+  week:                     # monitoring-length records
+    horizon: 604800.0       # s
+    normal: 80
+    leak: 50
+    fouling: 40
+    bypass: 30
+  month:                    # long-horizon monitoring tier (seasonal knob active;
+                            # 30 d gives up to ~3.4 weeks of post-onset record for
+                            # detection-delay evaluation)
+    horizon: 2592000.0      # s (30 d)
+    normal: 6
+    leak: 5
+    fouling: 3
+    bypass: 2
+
+driver:                     # parallel generation
+  workers: 4                # process-parallel worker count; conservative default —
+                            # the generation box measured ~48 effective workers,
+                            # set per run
+
+sensors:
+  consumer_coverage: 0.3    # fraction of consumers heat-metered
+  pressure_coverage: 0.1    # fraction of junctions pressure-sensed
+
+paths:
+  ditec_data: /home/asgerp/ditec-wdn   # local DiTEC-WDN dump
+
+poc:
+  network: hanoi_8GB_1Y     # starter network
+  static_scenario_id: 0     # pinned static parameter draw
+  horizon: 86400.0          # s (24 h)
+
+seed: 42                    # arbitrary; exists to be recorded (determinism convention)

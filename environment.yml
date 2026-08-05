@@ -1,0 +1,35 @@
+# Authoritative environment definition (single source of dependency truth).
+# Recreate:  conda env remove -n dcn-benchmark -y && conda env create -f environment.yml
+# Then:      conda run -n dcn-benchmark pip install -e .
+name: dcn-benchmark
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - numpy
+  - scipy
+  - pandas
+  - pyarrow
+  - networkx
+  - pyyaml
+  - pytest
+  - ruff
+  - pip
+  # Graph-loader deps: CPU torch keeps the env lean and
+  # deterministic — the loader only builds tensors. Swap pytorch-cpu for a
+  # CUDA build when the ML training phase starts, if GPU training is wanted.
+  - pytorch-cpu
+  - pytorch_geometric
+  # Notebook + plotting (notebooks/: PoC overview visualisations)
+  - matplotlib
+  - jupyter
+  - pip:
+      - wntr
+      # Verification harness ONLY (verify/pandapipes_ref.py).
+      # WNTR + our thermal layer stay the single
+      # generator; pandapipes is an oracle and nothing under src/ may import
+      # it. It is in the shared env rather than a separate one because it
+      # pins pandas < 3 and scipy < 1.17 — verified to leave the
+      # full suite green and the v1 records readable, so the
+      # isolation that matters is the import boundary, not the interpreter.
+      - pandapipes==0.14.0
